@@ -1,0 +1,19 @@
+---
+title: "compare_REML"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{compare_REML}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(REMLSimulationPaper)
+```

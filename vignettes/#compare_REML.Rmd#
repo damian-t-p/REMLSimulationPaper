@@ -1,0 +1,38 @@
+---
+title: "Compare Calvin-Dijkstra REML estimates to others"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{compare_REML}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(REMLSimulationPaper)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r}
+set.seed(12345)
+
+pacman::p_load(
+  tidyverse,
+  MASS,
+  nlme,
+  lme4
+)
+
+pacman::p_load_gh(
+  "dpavlyshyn/halfsibdesign" # Simulate and fit balanced half-sib designs
+)
+
+# Set a global theme for all figures in the document
+theme_set(theme_bw())
+```
