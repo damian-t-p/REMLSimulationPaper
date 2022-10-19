@@ -1,5 +1,6 @@
 inst/doc
-/doc/
+/doc/*
+!/doc/*.html
 /Meta/
 .Rproj.user
 .Rhistory

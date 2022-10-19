@@ -6,12 +6,13 @@
 <!-- badges: start -->
 <!-- badges: end -->
 
-The goal of REMLSimulationPaper is to …
+This is a package which reproduces the simulations and figures used in
+the REML simulation paper.
 
 ## Installation
 
-You can install the development version of REMLSimulationPaper from
-[GitHub](https://github.com/) with:
+You can install REMLSimulationPaper from [GitHub](https://github.com/)
+by running the following in an R console:
 
 ``` r
 # install.packages("devtools")
@@ -23,7 +24,7 @@ devtools::install_github("damian-t-p/halfsibdesign")
 devtools::install_github("damian-t-p/REMLSimulationPaper")
 ```
 
-## Package structure
+## Package structure and reproduction
 
 All simulation results can be found in `.csv` or `.RData` format in the
 `/data/` directory. The figures used in the paper are available in the
@@ -35,3 +36,5 @@ running
 ``` r
 devtools::build_vignettes(pkg = "REMLSimulationPaper")
 ```
+
+The compiled vignettes can be found in the `/docs/` directory.
