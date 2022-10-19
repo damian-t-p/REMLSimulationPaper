@@ -1,0 +1,567 @@
+---
+title: "eigenvalue_bias"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{eigenvalue_bias}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+
+# should all simulations be performed? If this is set to FALSE, the simulated 
+# data will instead be loaded from the local ./data/ directory.
+perform_simulations = FALSE
+
+# should the computed data be stored in a .RData file in ./data/?
+save_data = FALSE & perform_simulations
+```
+
+```{r setup}
+library(REMLSimulationPaper)
+```
+```{r}
+set.seed(1234)
+
+pacman::p_load(
+  tidyverse
+)
+
+pacman::p_load_gh(
+  "dpavlyshyn/halfsibdesign" # Simulate and fit balanced half-sib designs
+)
+# Set a global theme for all figures in the document
+theme_set(theme_bw())
+```
+# Nearly-null subspaces
+
+In this section, we simulate half-sib designs with warious covariance structures for between-sires and between-dams covariance matrices.
+In all cases, the between-individuals covariance matrices will simply be identites.
+
+We will always use a diagonal between-sires covarance matrix.
+Because the model is Gaussian, this is without loss of generality do to the rotational invariance of the data.
+However, the between-dams covariance cannot be taken to be diagonal without loss of generality.
+
+Specifically, consider the half-sib model with Gaussian responses where $E \propto I$.
+Now, suppose that $A$ has eigendecomposition $A = P \Lambda P^\mathrm{T}$.
+
+In this case, the REML and MANOVA estimates of the between-sires eigenvalues for the model with parameters $(A, B, E)$ are the same as those for the model with parameters $(\Lambda, P^\mathrm{T} B P, E)$.
+Therefore, there is no loss of generality when considering models with diagonal between-sires covariance matrices.
+However, the following is important to note:
+
+* We can only assume a diagonal structure for one of $A$ or $B$, but not both.
+* If we are interested in estimating something about $A$ other than the eigenvectors, we cannot assume a diagonal structure for $A$.
+* If we do not assume that $E$ is a scalar matrix, then it cannot be assumed to be diagonal either.
+
+## Between-sires covariance structures
+
+In all cases, $A$ is diagonal, where the lower $d$ diagonal entries are zeroes.
+
+* **Identity matrix:**
+$A_{ii} = 1$ for $1\leq i \leq q-d$
+* **Chi-squared variances**
+The entries independent chi-squared random variables given by $A_{ii} \sim \chi^2_{5}$.
+* **Heavy-tailed variances**
+The entries are the absolute values of independent Cauchy distributions with a location parameter of 5.
+That is, $A_{ii} = |Y_i + 5|$ for $Y_i \sim \mathrm{Cauchy}(0)$.
+
+```{r}
+a_types <- list(
+  identity = function(q, d) diag(c(rep(1, q - d), rep(0, d))),
+  chisquared = function(q, d) diag(c(rchisq(q - d, df=5), rep(0, d))),
+  heavytail = function(q, d) diag(c(abs(rcauchy(q - d, location=5)), rep(0, d)))
+)
+
+a_names <- c(
+  identity   = "Identity",
+  chisquared = "Chi-squared",
+  heavytail  = "Heavy-tailed",
+  spike      = "Spiked"
+)
+```
+
+## Between-dams covariance structures
+
+We also use several different structures for between-dams covariance matrices.
+These will generally not have eigenvalues aligned with the between-sires covatriance, so unlike $A$, we cannot use only diagonal $B$ matrices.
+
+* **Identity matrix:** $B = I$.
+* **Wishart matrix:** Let $X$ be a $q \times q$ matrix of iid $N(0, 1)$ random variables. Then we form $B = XX^{\mathrm{T}}/q$, which is the sample covariance of $X$. Since the population covariance of the columns of $X$ is $I$, $B$ is not too far from $I$, while still having uniformly distributed eigenvectors.
+* **High-rank matrix** Let $P$ be a matrix of orthonormal vectors drawn uniformly. Let $D$ be diagonal matrix with iid $\chi^2_5$ entries on the diagonal. We then take $B = PDP^{\mathrm{T}}$. This matrix has eigenvectors independent from those of $A$, but the eigenvalues are more spread out.
+* **High-correlation matrix** $B$ is a square matrix with $1$s on the diagonal and $0.8$s in every other entry. This can be represented as $B = 0.8 \mathbf{1}\mathbf{1}^{\mathrm{T}} + 0.2 I$, where $\mathrm{1}$ is a vector of ones. This means that the eigenvalues of $B$ are $0.8 q$ with multiplicity $1$ and $0.2$ with multiplicity 1 $q-1$.
+
+```{r}
+b_types <- list(
+  identity = function(q) diag(q),
+  wishart = function(q) {
+    X <- matrix(rnorm(q*q), nrow = q)
+    X %*% t(X) / q
+  },
+  highrank = function(q) {
+    P <- matrix(rnorm(q*q), nrow = q) %>%
+      {. + t(.)} %>%
+      eigen(symmetric=TRUE) %>%
+      .$vectors
+    D <- diag(rchisq(q, df=5))
+    P %*% D %*% t(P)
+  },
+  highcorr = function(q) matrix(0.8, nrow=q, ncol=q) + 0.2 * diag(q)
+)
+
+b_names <- c(
+  identity = "Identity",
+  wishart  = "Wishart",
+  highrank = "High-rank",
+  highcorr = "High-corr"
+)
+```
+
+## Analysis
+
+For each combination of $A$ and $B$ structures described above, and with an additional scaling of $A$ by a constant factor of $c_A \in \{0.5, 1, 2\}$ we compute the eigenvalues of the REML estimate of $A$.
+
+```{r}
+q <- 50
+
+I <- 100
+J <- 3
+K <- 5
+
+E <- diag(q)
+mu <- rep(0, q)
+
+n_reps <- 10
+nearly_null_dims <- seq(0, q, by=5)
+a_vars <- c(0.5, 1, 2)
+```
+
+We use the following set parameter values:
+
+* Number of traits ($q$): `r q`
+* Number of sires, dams per sire, and individuals per dam ($I, J, K$): `r c(I, J, K)`
+* Number of repetitions ($n$): `r n_reps`
+
+Moreover, the following variables:
+
+* Dimensions of null space ($d$): `r nearly_null_dims`
+* Additional sire covariance scaling ($c_A$): `r a_vars`
+
+```{r, eval = perform_simulations}
+eig_ref_reml <- expand_grid(
+  rep = 1:n_reps,
+  nearly_null_dim = nearly_null_dims,
+  a_var = a_vars,
+  a_type = names(a_types),
+  b_type = names(b_types)
+) %>%
+  mutate(., col_idx = 1:nrow(.))
+
+eig_mat <- matrix(
+  nrow = nrow(eig_ref_reml),
+  ncol = q
+)
+
+for (idx in 1:nrow(eig_ref_reml)) {
+  
+  a_var <- eig_ref_reml[[idx, "a_var"]]
+  d <- eig_ref_reml[[idx, "nearly_null_dim"]]
+  
+  A <- a_var * a_types[[eig_ref_reml[[idx, "a_type"]]]](q, d)
+  B <- b_types[[eig_ref_reml[[idx, "b_type"]]]](q)
+  
+  df <- rhalfsib(mu, A, I, B, J, E, K)
+  reml_est <- stepreml_2way(df)
+  
+  eig_mat[eig_ref_reml[[idx, "col_idx"]],] <- eigen(reml_est$S3, symmetric = TRUE, only.values = TRUE)$values
+}
+```
+
+```{r eval = !perform_simulations}
+load("../data/nearly-null.RData")
+```
+
+```{r, eval = save_data}
+save(eig_ref_reml, eig_mat, file = "../data/nearly-null.RData")
+```
+
+```{r}
+eig_stat_nn <- eig_ref_reml %>%
+  arrange(col_idx) %>%
+  mutate(
+    max     = apply(eig_mat, 1, max),
+    nzeroes = apply(eig_mat, 1, function(v) sum(abs(v) < 1e-6)),
+    nsmall  = apply(eig_mat, 1, function(v) sum(abs(v) < 1)),
+    a_type  = factor(a_type, levels = names(a_names)),
+    b_type  = factor(b_type, levels = names(b_names))
+  )
+```
+
+Having performed these simulations, we can produce several plots of potential estimators of the nearly-null dimension, which we will denote by $\hat{d}$.
+
+One such estimator is the number of eigenvalues of the REML estimate of $A$ that are exactly zero.
+The following plots show the effect of the true nearly-null dimension on this estimate for each of the structures of $A$ and $B$ described previously.
+
+For each combination of parameters, the simulation and estimation is repeated 10 times.
+The solid line and ribbon show the mean and a 2-standard deviation band computed from these replicates.
+In addition, the line $\hat{d} = d$ is displayed on each plot in black dashes.
+
+In all cases, the estimated nearly-null dimension tends to be moderated: when $d$ is large, $\hat{d}$ is an underestimabe, and vice-versa when $d$ is small.
+Moreover, it seems that the structure of $B$ that is the main factor governing the shape of the $\hat{d}$ curve.
+
+```{r zero-evals, fig.height=9, fig.width=7,}
+eig_stat_nn %>% 
+  ggplot(aes(
+    x = nearly_null_dim,
+    y = nzeroes,
+    fill = ordered(a_var), 
+    color = ordered(a_var))) + 
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed") + 
+  stat_summary(
+    fun.min = function(x) quantile(x, 0.25)[[1]],
+    fun.max = function(x) quantile(x, 0.75)[[1]],
+    geom = "ribbon",
+    color = NA, alpha = 0.5) + 
+  stat_summary(
+    fun = "mean",
+    geom = "line",
+    size = 1) + 
+  facet_grid(
+    b_type ~ a_type,
+    labeller = label_bquote(
+      cols = Sigma[A] : .(a_names[a_type]),
+      rows = Sigma[B] : .(b_names[b_type])
+    )
+  ) + 
+  labs(
+    x = expression("Nearly-null dimension of"~Sigma[A]),
+    y = expression("Number of zero eigenvalues of"~hat(Sigma)[A]),
+    color = expression(Sigma[A] ~ scaling ~ (c[A])),
+    fill = expression(Sigma[A] ~ scaling ~ (c[A]))
+  ) +
+  coord_cartesian(
+    xlim = c(0, 50),
+    ylim = c(0, 50),
+    expand = FALSE
+  ) +
+  scale_fill_brewer(type = "qual") + 
+  scale_color_brewer(type = "qual") +
+  theme(
+    legend.position = "bottom",
+    panel.spacing = unit(0.75, "lines")
+  )
+
+ggsave("../figs/zero-evals.pdf", device = "pdf")
+```
+
+We can perform similar analyses with different estimators od $d$.
+The following plot has the same features as the previous one, but instead displays the number of "small" eigenvalues of $A$, defined here at the number of eigenvalues with a value below $1$.
+
+This always exceeds the number of eigenvalues of $A$ that are exactly zero, and so, as we might expect, it improves the under-estimates at the expense of the over-estimates.
+
+This estimator does particularly well when $B$ has well=separated eigenvalues - that is in the high-correlation and identity case.
+
+```{r small-evals, fig.height=9, fig.width=7,}
+eig_stat_nn %>% 
+  ggplot(aes(
+    x = nearly_null_dim,
+    y = nsmall,
+    fill = ordered(a_var), 
+    color = ordered(a_var))) + 
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed") + 
+  stat_summary(
+    fun.min = function(x) quantile(x, 0.25)[[1]],
+    fun.max = function(x) quantile(x, 0.75)[[1]],
+    geom = "ribbon",
+    color = NA, alpha = 0.5) + 
+  stat_summary(
+    fun = "mean",
+    geom = "line",
+    size = 1) + 
+  facet_grid(
+    b_type ~ a_type,
+    labeller = label_bquote(
+      cols = Sigma[A] : .(a_names[a_type]),
+      rows = Sigma[B] : .(b_names[b_type])
+    )
+  ) + 
+  labs(
+    x = expression("Nearly-null dimension of"~Sigma[A]),
+    y = expression("Number of eigenvalues of"~hat(Sigma)[A]~"smaller than 1"),
+    color = expression(Sigma[A] ~ scaling ~ (c[A])),
+    fill = expression(Sigma[A] ~ scaling ~ (c[A]))
+  ) +
+  coord_cartesian(
+    xlim = c(0, 50),
+    ylim = c(0, 50),
+    expand = FALSE
+  ) +
+  scale_fill_brewer(type = "qual") + 
+  scale_color_brewer(type = "qual") +
+  theme(
+    legend.position = "bottom",
+    panel.spacing = unit(0.75, "lines")
+  )
+
+ggsave("../figs/small-evals.pdf", device = "pdf")
+```
+
+This code can easily be modified to perform similar analyses for any estimator of $d$, or indeed of any statistic based on the eigenvalues of $A$.
+
+# Large eigenvalues
+
+We can use the same machinery that we developed for the nearly-null space analysis to instead estimate the large eigenvalues of $A$.
+
+```{r}
+q <- 50
+
+I <- 100
+J <- 3
+K <- 5
+
+E <- diag(q)
+mu <- rep(0, q)
+
+n_reps <- 10
+nearly_null_dims <- seq(0, q, by=5)
+a_vars <- c(0.5, 1, 2)
+```
+
+In the following, we repeat the parameter values and $B$ structures from the previous section.
+However, we use some slightly different structures for $A$.
+Specifically, we take:
+
+* **Identity matrix:**
+$A_{ii} = 1$ for $1\leq i \leq q-d$
+* **Chi-squared:**
+The entries independent chi-squared random variables scaled to have a mean of $1$. Specifically, $A_{ii} \sim \chi^2_{5}/5$.
+Unlike in the previous cases, we sample a single vector of chi-squared random variables and re-use them for each replicate so that there is not huge variation in the population largest eigenvalue.
+* **Spike:**
+$A_{11} = 5, A_{ii} = 1$ for $2\leq i \leq q-d$
+
+```{r}
+set_chisquared <- rchisq(q, df=5)/5
+
+a_types_maxeig <- list(
+  identity = function(q, d) diag(c(rep(1, q - d), rep(0, d))),
+  spike = function(q, d) diag(c(
+    rep(5, min(1, q - d)),
+    rep(1, max(0, q - d - 1)),
+    rep(0, d))),
+  chisquared = function(q, d) diag(c(set_chisquared[min(1, q-d):(q-d)], rep(0, d)))
+)
+
+a_pop_maxeigs <- list(
+  identity = 1,
+  spike = 5,
+  chisquared = max(set_chisquared),
+  heavytail = NA
+)
+```
+
+```{r}
+q = 50
+d = 10
+
+a_eig_df <- sapply(
+  a_types_maxeig,
+  function(f, ...) diag(f(...)),
+  q, d
+) %>%
+  as.tibble() %>%
+  pivot_longer(
+    everything(),
+    names_to = "structure",
+    values_to = "eigenvalue")
+```
+
+```{r eval = perform_simulations}
+eig_ref <- expand_grid(
+  rep = 1:n_reps,
+  nearly_null_dim = nearly_null_dims,
+  a_var = a_vars,
+  a_type = names(a_types_maxeig),
+  b_type = names(b_types)
+) %>%
+  mutate(., col_idx = 1:nrow(.))
+
+eig_mat_reml <- matrix(
+  nrow = nrow(eig_ref),
+  ncol = q
+)
+
+eig_mat_manova <- matrix(
+  nrow = nrow(eig_ref),
+  ncol = q
+)
+
+for (idx in 1:nrow(eig_ref)) {
+  
+  a_var <- eig_ref[[idx, "a_var"]]
+  d <- eig_ref[[idx, "nearly_null_dim"]]
+  
+  A <- a_var * a_types_maxeig[[eig_ref[[idx, "a_type"]]]](q, d)
+  B <- b_types[[eig_ref[[idx, "b_type"]]]](q)
+  
+  df <- rhalfsib(mu, A, I, B, J, E, K)
+  
+  reml_est <- stepreml_2way(df)
+  eig_mat_reml[eig_ref[[idx, "col_idx"]],] <- eigen(reml_est$S3, symmetric = TRUE, only.values = TRUE)$values
+  
+  manova_est <- manova_2way(df)
+  eig_mat_manova[eig_ref[[idx, "col_idx"]],] <- eigen(manova_est$S3, symmetric = TRUE, only.values = TRUE)$values
+}
+```
+
+```{r eval = !perform_simulations, include = FALSE}
+load("../data/manova-reml.RData")
+```
+
+```{r eval = save_data}
+save(eig_ref, eig_mat_reml, eig_mat_manova, file = "../data/manova-reml.RData")
+```
+
+One feature of the large eigenvalues of the REML estimate that I noticed empirically is that the largest REML eigenvalue is always larger than the corresponding MANOVA estimate.
+
+In the following plots, we graphisize the relative difference
+\[
+  \frac{\hat{\lambda}_{1, \text{MANOVA}} - \hat{\lambda}_{1, \text{REML}}}{\hat{\lambda}_{1, \text{REML}}},
+\]
+showing that indeed, this value is never positive, and that the amount of underestimation depends on $B$.
+
+Specifically, in the high-correlation case, where $B$ has a single eigenvalue that is much larger than the others, the REML estimate is substantially larger than the MANOVA estimate.
+In the other cases, the difference is smaller, but not insignificant.
+
+In the following plot, each set of 10 replicates is shown as a boxplot.
+Each cluster of three colored boxplots should be understood as having the samel nearly-null dimension.
+
+```{r bias-largest, fig.height=9, fig.width=7,}
+eig_stat_me <- eig_ref %>%
+  arrange(col_idx) %>%
+  mutate(
+    max_manova = apply(eig_mat_manova, 1, max),
+    max_reml = apply(eig_mat_reml, 1, max),
+    max_diff = max_manova - max_reml, 
+    a_type  = factor(a_type, levels = names(a_names)),
+    b_type  = factor(b_type, levels = names(b_names))
+  )
+
+eig_stat_me %>%
+  filter(nearly_null_dim < q) %>%
+  ggplot(aes(
+    x     = nearly_null_dim,
+    y     = max_diff/abs(max_reml),
+    fill  = ordered(a_var), 
+    color = ordered(a_var))) + 
+  stat_summary(
+    fun.min = function(x) quantile(x, 0.25)[[1]],
+    fun.max = function(x) quantile(x, 0.75)[[1]],
+    geom = "ribbon",
+    color = NA, alpha = 0.5) + 
+  stat_summary(
+    fun = "mean",
+    geom = "line",
+    size = 1) + 
+  facet_grid(
+    b_type ~ a_type,
+    labeller = label_bquote(
+      cols = Sigma[A] : .(a_names[a_type]),
+      rows = Sigma[B] : .(b_names[b_type])
+    ),
+    scale = "free_y"
+  ) + 
+  labs(
+    x = expression("Nearly-null dimension of"~Sigma[A]),
+    ## y = expression((lambda[max](hat(Sigma)["A, MANOVA"]) - lambda[max](hat(Sigma)["A, REML"])) /  lambda[max](hat(Sigma)["A, REML"]) ),
+    y = expression((hat(lambda)[max]["1, MANOVA"] - hat(lambda)["1, REML"]) /  hat(lambda)["1, REML"]),
+    color = expression(Sigma[A] ~ scaling ~ (c[A])),
+    fill = expression(Sigma[A] ~ scaling ~ (c[A]))
+  ) +
+  coord_cartesian(
+    xlim = c(0, NA),
+    ylim = c(NA, 0),
+    expand = FALSE
+  ) +
+  scale_y_continuous(expand = c(0.05, 0)) + 
+  scale_fill_brewer(type = "qual") + 
+  scale_color_brewer(type = "qual") +
+  theme(
+    legend.position = "bottom",
+    panel.spacing = unit(0.75, "lines")
+  )
+
+ggsave("../figs/bias-largest.pdf", device = "pdf")
+```
+
+We can also investigate the bias in $\hat{\lambda}_{1, \text{REML}}$ by plotting the relative difference
+\[
+  \frac{\hat{\lambda}_{1, \text{MANOVA}} - \lambda_1}{\lambda_1},
+\]
+where $\lambda_1$ is the largest eigenvalue of the true underlying covariance matrix $A$.
+
+From the following plot, we see that $\hat{\lambda}_{1, \text{MANOVA}}$ typically has a substantial upwards bias that is influenced by the structure and rank of $A$.
+
+```{r bias-to-truth, fig.height=9, fig.width=7,}
+eig_stat_me <- eig_stat_me %>%
+  mutate(
+    a_pop_maxeig = sapply(a_type, function(i) a_pop_maxeigs[[as.character(i)]], USE.NAMES=FALSE),
+    reml_maxeig_error = max_reml - a_pop_maxeig
+    )
+
+eig_stat_me %>% 
+  filter(nearly_null_dim < q) %>%
+  ggplot(aes(
+    x    = nearly_null_dim,
+    y    = reml_maxeig_error/a_pop_maxeig,
+    fill = ordered(a_var),
+    color = ordered(a_var))) + 
+  stat_summary(
+    fun.min = function(x) quantile(x, 0.25)[[1]],
+    fun.max = function(x) quantile(x, 0.75)[[1]],
+    geom = "ribbon",
+    color = NA, alpha = 0.5) + 
+  stat_summary(
+    fun = "mean",
+    geom = "line",
+    size = 1) + 
+  facet_grid(
+    b_type ~ a_type,
+    labeller = label_bquote(
+      cols = Sigma[A] : .(a_names[a_type]),
+      rows = Sigma[B] : .(b_names[b_type])
+    ),
+    scale = "free_y"
+  ) + 
+  labs(
+    x = expression("Nearly-null dimension of"~Sigma[A]),
+    y = expression((hat(lambda)["A, REML"] - lambda[1])/lambda[1]),
+    color = expression(Sigma[A] ~ scaling ~ (c[A])),
+    fill = expression(Sigma[A] ~ scaling ~ (c[A]))
+  ) +
+  coord_cartesian(
+    xlim = c(0, NA),
+    ## ylim = c(0, NA),
+    expand = FALSE
+  ) +
+  scale_y_continuous(expand = c(0.05, 0)) + 
+  scale_fill_brewer(type = "qual") + 
+  scale_color_brewer(type = "qual") +
+  theme(
+    legend.position = "bottom",
+    panel.spacing = unit(0.75, "lines")
+  )
+
+ggsave("../figs/bias-to-truth.pdf", device = "pdf")
+```

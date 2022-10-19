@@ -1,5 +1,5 @@
 ---
-title: "compare_REML"
+title: "Compare Calvin-Dijkstra REML estimates to others"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{compare_REML}
@@ -16,8 +16,137 @@ knitr::opts_chunk$set(
 
 ```{r setup}
 library(REMLSimulationPaper)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
 ```{r}
-1
+set.seed(1234)
+
+pacman::p_load(
+  tidyverse,
+  MASS,
+  nlme,
+  lme4
+)
+
+pacman::p_load_gh(
+  "dpavlyshyn/halfsibdesign" # Simulate and fit balanced half-sib designs
+)
+```
+
+# Covariance estimates 
+
+To illustrate the different estimators, we choose an example with parameters that Jacqueline described in out last meeting.
+That is, we have $I = 100$ sires each paired with $J = 3$ dams, and with each pairing producing $K = 5$ offspring.
+
+However, we only use 4 traits, since we want to be able to compute the estimates in all cases, and this is the largest number of traits for which I can relatively quickly run `lme()`.
+```{r}
+p <- 4 # number of traits
+
+I <- 100 # number of sires
+J <- 3 # number of dams
+K <- 5 # number of individuals per line
+```
+
+We also take the among-sire, among-dam and among-individual covariance matrices to be diagonal matrices with some zeroes alonf the diagonal.
+Specifically,
+\[
+  A = \sigma_A^2 \begin{pmatrix}1&&&\\&1&&\\&&0&\\&&&0\end{pmatrix}, 
+  \qquad B = \sigma_B^2 \begin{pmatrix}1&&&\\&0&&\\&&0&\\&&&1\end{pmatrix},
+  \qquad E = \sigma_E^2 I
+\]
+
+However, we will not use this information when fitting --- all procedures are run with no assumptions on the structure of the covariance.
+
+For this example, we choose $\sigma_A = 5, \sigma_B = 3, \sigma_E = 1$ and $\mu = (1, 2, 3, 4)$.
+
+```{r}
+mu <- 1:p
+
+sigma_a <- 5
+sigma_b <- 3
+sigma_e <- 1
+
+A <- sigma_a^2 * diag(c(1, 1, 0, 0))
+B <- sigma_b^2 * diag(c(1, 0, 0, 1))
+E <- sigma_e^2 * diag(p)
+```
+
+The function `rhalfsib()` produces a random realization from the half-sib design with specified intercept, covariance matrices and counts.
+
+We sample one such design and store it in a long data frame.
+```{r}
+df <- rhalfsib(mu, A, I, B, J, E, K)
+head(df)
+```
+
+We can then use the stepwise algorithm to fit REML to this data
+
+```{r}
+stepreml_fit <- stepreml_2way(df)
+pseudoreml_fit <- preml_2way(df)
+```
+
+## Comparison to MANOVA
+
+Fitting a MANOVA to the same data, we estimates that are somewhat similar, but not necessarily positive definite.
+
+The REML criterion evaluated at the MANOVA estimate is slightly higher than when it is evaluated at the REML estimate.
+This is to be expected, as the MANOVA fit optimizes the same ebjective function, but does so over an unconstrained domain.
+
+```{r}
+manova_fit <- manova_2way(df)
+```
+
+## Comparison to `lme()`
+
+Next, we fit a mixed-effects model to the data using `lme()` to optimize REML.
+The syntax is a bit confusing, since the "individual" effect is folded into the residual variance rather than being considered a random effect.
+
+Hence, we only consider sire and dam random effects and specify that the residual erors have unspecified covariance matrices within each individual.
+```{r}
+lme1 <- lme(
+  value       ~ -1 + trait,
+  data        = df,
+  random      = ~ -1 + trait | sire/dam,
+  weights     = varIdent(form = ~ 1 | trait), # different variances for each trait
+  correlation = corSymm(form =  ~ 1 | sire/dam/individual), # residual errors correlated within individual group
+  method      = "REML",
+  control     = list(returnObject = TRUE) # don't error if no convergence
+  )
+```
+
+```{r}
+lme_fit <- get_covs(lme1)
+```
+
+```{r}
+cov_names = c(S1 = "Sigma_E", S2 = "Sigma_B", S3 = "Sigma_A")
+
+df_comparison_eigs <- bind_rows(
+  eigen_table(manova_fit) %>% mutate(method = "MANOVA"),
+  eigen_table(lme_fit) %>% mutate(method = "REML-LME"),
+  eigen_table(stepreml_fit) %>% mutate(method = "Stepwise REML"),
+  eigen_table(pseudoreml_fit) %>% mutate(method = "Pseudo REML")
+) %>%
+  mutate(component = cov_names[component]) %>%
+  relocate(component, method) %>%
+  arrange(component, method)
+
+write_csv(df_comparison_eigs, "../data/algorithm_comparison_eigenvalues.csv")
+
+df_comparison_eigs
+```
+
+```{r}
+df_comparison_crit <- bind_rows(
+  tibble(method = "MANOVA", reml_crit = manova_fit$reml_crit),
+  tibble(method = "REML-LME", reml_crit = lme_fit$reml_crit),
+  tibble(method = "Stepwise REML", reml_crit = stepreml_fit$reml_crit),
+  tibble(method = "Pseudo REML", reml_crit = pseudoreml_fit$reml_crit)
+)
+
+write_csv(df_comparison_crit, "../data/algorithm_comparison_REML_criterion.csv")
+
+df_comparison_crit
 ```
