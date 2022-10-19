@@ -1,0 +1,46 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# REMLSimulationPaper
+
+<!-- badges: start -->
+<!-- badges: end -->
+
+The goal of REMLSimulationPaper is to ...
+
+## Installation
+
+You can install the development version of REMLSimulationPaper from [GitHub](https://github.com/) with:
+
+```{r eval=FALSE, include=TRUE}
+# install.packages("devtools")
+
+# install package required for simulation and analysis
+devtools::install_github("damian-t-p/halfsibdesign")
+
+# install REMLSimulationPaper
+devtools::install_github("damian-t-p/REMLSimulationPaper")
+```
+
+## Package structure
+
+All simulation results can be found in `.csv` or `.RData` format in the `/data/` directory.
+The figures used in the paper are available in the `/figs/` directory.
+
+To reproduce the simulations and figures, re-build the vignettes by running
+```{r eval = FALSE, include=TRUE}
+devtools::build_vignettes(pkg = "REMLSimulationPaper")
+```
+
