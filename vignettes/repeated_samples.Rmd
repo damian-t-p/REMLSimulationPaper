@@ -1,5 +1,5 @@
 ---
-title: "repeated_samples"
+title: "Figures for large-p simulations"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{repeated_samples}
@@ -45,42 +45,36 @@ pacman::p_load_gh(
 theme_set(theme_bw())
 ```
 
-# Feasibility of large $q$ for stepwise REML
+# Figures 1 and 2: stepwise- and pairwise-REML estimates
 
-An important advantage of stepwise REML is that it is can easily be run for relatively large numbers of traits.
-In this section, I use $q = 50$, but $q$ can be in the thousands before the pseudo-REML estimate takes more than a second to compute.
-
-We set up the parameters on our now 50-dimensional model:
+We use the parameters described in eqs. (3, 5):
 ```{r}
-q <- 50 # number of traits
+p <- 50 # number of traits
 
 I <- 100 # number of sires
 J <- 3 # number of dams
 K <- 5 # number of individuals per line
 
-mu <- rep(2, q) # Just a vector of 2s - not really important for the model
+mu <- rep(2, p) # Just a vector of 2s - not really important for the model
 
-sigma_a <- abs(rnorm(q))
-sigma_b <- abs(rnorm(q))
+sigma_a <- abs(rnorm(p))
+sigma_b <- abs(rnorm(p))
 sigma_e <- 1
 
-A <- sigma_a^2 * diag(q)
-B <- sigma_b^2 * diag(q)
-E <- sigma_e^2 * diag(q)
+A <- sigma_a^2 * diag(p)
+B <- sigma_b^2 * diag(p)
+E <- sigma_e^2 * diag(p)
 ```
 
-As before, we generate our half-sib data and fit a pseudo-REML.
-To demonstrate some more complicated begavior, we set $\Sigma_A, \Sigma_B$ to be diagonal matrices with reandom entries.
-We also set $q = 50$ to see that the software has no issues with this dimensionality.
+As before, we generate our half-sib data and compute the pseudo-REML estimates, logging the eigenvalues of the corresponding estimate $\hat{\Sigma}_A$.
 ```{r}
 df <- rhalfsib(mu, A, I, B, J, E, K)
-# write_csv(df, "data/halfsib-highdim.csv")
 
 A_reml_est <- stepreml_2way_df(df)
-
 eigs_reml_est <- eigen(A_reml_est$S3, symmetric = TRUE)$values
-min(eigs_reml_est)
 ```
+
+## Figure 1: eigenvalue histograms
 
 We then plot the eigenvalues of $\hat{\Sigma}_A$ (in red) next to the true eigenvalues of $\Sigma_A$ (in blue):
 ```{r first-REML}
@@ -102,7 +96,6 @@ ggplot(eig_df, mapping = aes(x = Eigenvalue, fill = Type)) +
     ~Type,
     labeller = label_bquote(.(estimate_names[as.character(Type)]))) + 
   labs(
-    title = expression("Histograms of eigenvalues of"~Sigma[A]~"and its REML estimate"),
     y = "Count"
   ) +
   theme(legend.position = "none")
@@ -110,7 +103,7 @@ ggplot(eig_df, mapping = aes(x = Eigenvalue, fill = Type)) +
 ggsave("../figs/first-REML.pdf", device = "pdf")
 ```
 
-## Pairwise REML
+## Figure 2: Stepwise REML and Pseudo REML scatterplot
 
 Last, we investigate the strategy of computing pairwise REML estimates for each pair of traits.
 We create a new estimate $\hat{\Sigma}_{A,2}$ such that the diagonal entries $[\hat{\Sigma}_{A,2}]_{ii}$ are computed by doing a single-trait analysis on trait $i$ and the off-diagonal entries $[\hat{\Sigma}_{A,2}]_{ij}$ are computed by doing a 2-trait analysis on the traits $(i,j)$.
@@ -119,9 +112,9 @@ I use the pseudo-REML estimates for the 2-trait analyses, since we need to fill 
 However, we can still compare $\hat{\Sigma}_{A,2}$ with the REML esimate $\hat{\Sigma}_{A,1}$ to see how the eigenvalues produced by the paiwiise procedure differ from those done by computing the whole stepwise REML estimate at once.
 
 ```{r eval = perform_simulations}
-A_pairwise_est <- matrix(nrow = q, ncol = q)
+A_pairwise_est <- matrix(nrow = p, ncol = p)
 
-for(r in 1:q) {
+for(r in 1:p) {
   # fill in diagonal
   df_sub <- filter(df, trait == r)
   A_sub_est <- stepreml_2way_df(df_sub)$S3
@@ -129,7 +122,7 @@ for(r in 1:q) {
   A_pairwise_est[r, r] <- A_sub_est[1,1]
   
   if(r < q) {
-    for(s in (r+1):q) {
+    for(s in (r+1):p) {
       df_sub <- filter(df, trait %in% c(r, s))
       A_sub_est <- stepreml_2way_df(df_sub)$S3
       
@@ -140,7 +133,7 @@ for(r in 1:q) {
 }
 ```
 
-```{r eval = !perform_simulations}
+```{r eval = !perform_simulations, include = FALSE}
 A_pairwise_est <- read.table("../data/pairwise-covariances.csv", sep = ",") %>%
   unname() %>%
   as.matrix()
@@ -168,7 +161,6 @@ In the following figure, we plot $\mu_i - \lambda_i$ against $\lambda_i$.
 ggplot(mapping = aes(x = eigs_reml_est, y = eigs_pairwise_est - eigs_reml_est)) + 
   geom_point() + 
   labs(
-    title = expression("Comparison of eigenvalues of"~Sigma["A,R"]~"and"~Sigma["A,P"]),
     x = expression("Eigenvalues"~lambda["i, R"]~"of"~Sigma["A,R"]),
     y = expression(lambda["i, R"] - lambda["i, P"])
   )
@@ -177,15 +169,14 @@ ggsave("../figs/eval-diffs.pdf", device = "pdf")
 ```
 
 
-# Repeated sampling
+# Figures 3 and 4: repeated samples
 
-With the improved algorithm for computing REML esimates of $\Sigma_A, \Sigma_B, \Sigma_E$ in the balanced case, investigation of large eigenvalues of these matrices throughrepeated sampling becomes much more tractable.
-
+We set up a function to perform repeated samples
 ```{r}
-repeated_sample <- function(q_vals, I, J, K, n_reps, methods, make_sigmas, make_mu, max_idx=5) {
+repeated_sample <- function(p_vals, I, J, K, n_reps, methods, make_sigmas, make_mu, max_idx=5) {
   # output data frame
   res_df <- tibble(
-    q = integer(),
+    p = integer(),
     rep = integer(),
     level = character(),
     eig_idx = integer(),
@@ -194,12 +185,12 @@ repeated_sample <- function(q_vals, I, J, K, n_reps, methods, make_sigmas, make_
     sample_eig = numeric()
   )
   
-  for(q in q_vals) {
-    A <- make_sigmas$A(q)
-    B <- make_sigmas$B(q)
-    E <- make_sigmas$E(q)
+  for(p in p_vals) {
+    A <- make_sigmas$A(p)
+    B <- make_sigmas$B(p)
+    E <- make_sigmas$E(p)
     
-    mu_vec <- make_mu(q)
+    mu_vec <- make_mu(p)
     
     for(rep in 1:n_reps) {
       
@@ -212,7 +203,7 @@ repeated_sample <- function(q_vals, I, J, K, n_reps, methods, make_sigmas, make_
         A_eigs <- eigen(reml_est$S3, symmetric = TRUE, only.values = TRUE)$values
         
         df_A <- tibble(
-          q = q,
+          p = p,
           rep = rep,
           level = "A",
           eig_idx = 1:max_idx,
@@ -224,7 +215,7 @@ repeated_sample <- function(q_vals, I, J, K, n_reps, methods, make_sigmas, make_
         B_eigs <- eigen(reml_est$S2, symmetric = TRUE, only.values = TRUE)$values
         
         df_B <- tibble(
-          q = q,
+          p = p,
           rep = rep,
           level = "B",
           eig_idx = 1:max_idx,
@@ -236,7 +227,7 @@ repeated_sample <- function(q_vals, I, J, K, n_reps, methods, make_sigmas, make_
         E_eigs <- eigen(reml_est$S1, symmetric = TRUE, only.values = TRUE)$values
         
         df_E <- tibble(
-          q = q,
+          p = p,
           rep = rep,
           level = "E",
           eig_idx = 1:max_idx,
@@ -255,109 +246,11 @@ repeated_sample <- function(q_vals, I, J, K, n_reps, methods, make_sigmas, make_
 }
 ```
 
-## Distribution of large eigenvalues
+## Figure 3: bias in large eigenvalues
 
-First, we investigate the largest eigenvalues of REML estimates with increasing numbers of traits.
-
-In this example, we simulate half-sibling designs with  $\Sigma_A = I, \Sigma_B = 2I, \Sigma_E = I, \mu = (2, \dotsc, 2)$ with $I = 100, J= 3, K = 5$.
-We perform 50 such simulations for each of $q = 10, 20, \dotsc, 100$ and plot the results.
-
+We use the parameter values specified in eq. (6):
 ```{r eval = perform_simulations}
-# experiment parameters
-q_vals <- seq(10, 100, by=10)
-n_reps <- 50
-max_idx <- 5
-
-methods <- list(
-  #MANOVA = manova_2way_df,
-  REML = stepreml_2way_df
-)
-
-# model parameters
-sigma_a <- 1
-sigma_b <- 2
-sigma_e <- 1
-
-I <- 100 
-J <- 3 
-K <- 5 
-
-mu <- 2
-
-make_sigmas <- list(
-  A = function(q) {sigma_a^2 * diag(q)},
-  B = function(q) {sigma_b^2 * diag(q)},
-  E = function(q) {sigma_e^2 * diag(q)}
-)
-
-make_mu <- function(q) {rep(mu, q)}
-
-res_df <- repeated_sample(q_vals, I, J, K, n_reps, methods, make_sigmas, make_mu, max_idx=5)
-```
-
-```{r eval = !perform_simulations}
-res_df <- read_csv(
-  "../data/REML-p50-eigenvalues.csv",
-  col_types = c("i", "i", "c", "i", "c", "d", "d")
-  )
-```
-
-```{r eval = save_data}
-write_csv(res_df, "../data/REML-p50-eigenvalues.csv")
-```
-
-In the following plot, we show the means of the top 5 eigenvalues of the REML estimates for each of $\Sigma_A, \Sigma_B,\Sigma_E$.
-Additionally, the corresponding population eigenvalues (1, 2, 1 respectively) are shown in a thick red line.
-
-We see that as $q$ increases, the largest eigenvalues become increasingly biased.
-```{r index}
-cov_names = expression(
-  A = Sigma[A],
-  B = Sigma[B],
-  E = Sigma[E]
-)
-
-summ_df <- res_df %>%
-  group_by(q, level, method, eig_idx) %>%
-  summarize(
-    eig_mean = mean(sample_eig),
-    eig_sd = sd(sample_eig),
-    pop_eig = mean(pop_eig)
-  )
-
-summ_df %>%
-  ggplot(aes(x = q, y = eig_mean, color = ordered(eig_idx))) + 
-  facet_wrap(
-    ~ level,
-    scales = "free_y",
-    labeller = label_bquote(.(cov_names[level]))) + 
-  geom_line() + 
-  geom_hline(aes(yintercept = pop_eig), color = "red", size = 1.5) + 
-  geom_point() + 
-  labs(
-    title    = "Largest eigenvalues of REML fit",
-    subtitle = "Mean of 50 replicates of top-5 eigenvalues",
-    x        = "Number of traits (p)",
-    y        = "REML eigenvalue",
-    color    = "Index (i)"
-  )
-
-ggsave("../figs/index.pdf", device = "pdf")
-```
-
-## Difference between REML and MANOVA estimates
-
-Another question of interest is how close the large eigenvalues of the REML estimates are to the corresponding MANOVA eigenvalues.
-In the previous example, the eigenvalues of $\Sigma_A, \Sigma_B, \Sigma_E$ were large enough that the REML estimates coincided with the MANOVA estimates.
-
-To see a more pathological example, we repeat the simulations of the previous sub-section, but now with half of the diagonals of $\Sigma_A$ and $\Sigma_B$ set to zero at random.
-Now, the smallest eigenvalues of the MANOVA estimates of $\Sigma_A$ and $\Sigma_B$ are negative and so must me corrected.
-
-To examine the discrepancies between the two estimates, we plot the mean and standard deviation of the differnces $\lambda_i(\hat{\Sigma}_{k, \text{REML}}) - \lambda_i(\hat{\Sigma}_{k, \text{MANOVA}})$ for $i = 1, \dotsc, 5, k = A, B, E$.
-
-```{r eval = perform_simulations}
-# experiment parameters
-q_vals <- seq(10, 70, by=10)
+p_vals <- seq(10, 100, by=10)
 n_reps <- 50
 max_idx <- 5
 
@@ -377,18 +270,99 @@ K <- 5
 
 mu <- 2
 
-
 make_sigmas <- list(
-  A = function(q) {sigma_a^2 * diag(rbinom(q, 1, 0.5))},
-  B = function(q) {sigma_b^2 * diag(rbinom(q, 1, 0.5))},
-  E = function(q) {sigma_e^2 * diag(q)}
+  A = function(p) {sigma_a^2 * diag(p)},
+  B = function(p) {sigma_b^2 * diag(p)},
+  E = function(p) {sigma_e^2 * diag(p)}
 )
 
-make_mu <- function(q) {rep(mu, q)}
+make_mu <- function(p) {rep(mu, p)}
 
-comp_df <- repeated_sample(q_vals, I, J, K, n_reps, methods, make_sigmas, make_mu, max_idx=5)
+res_df <- repeated_sample(p_vals, I, J, K, n_reps, methods, make_sigmas, make_mu, max_idx=5)
 ```
-```{r eval = !perform_simulations}
+
+```{r eval = !perform_simulations, include = FALSE}
+res_df <- read_csv(
+  "../data/REML-p50-eigenvalues.csv",
+  col_types = c("i", "i", "c", "i", "c", "d", "d")
+  )
+```
+
+```{r eval = save_data}
+write_csv(res_df, "../data/REML-p50-eigenvalues.csv")
+```
+
+We then plot the means of the estimated eigenvalues, including the corresponding populatin eigenvalues as a thick red line
+```{r index}
+cov_names = expression(
+  A = Sigma[A],
+  B = Sigma[B],
+  E = Sigma[E]
+)
+
+summ_df <- res_df %>%
+  group_by(p, level, method, eig_idx) %>%
+  summarize(
+    eig_mean = mean(sample_eig),
+    eig_sd = sd(sample_eig),
+    pop_eig = mean(pop_eig)
+  )
+
+summ_df %>%
+  ggplot(aes(x = p, y = eig_mean, color = ordered(eig_idx))) + 
+  facet_wrap(
+    ~ level,
+    scales = "free_y",
+    labeller = label_bquote(.(cov_names[level]))) + 
+  geom_line() + 
+  geom_hline(aes(yintercept = pop_eig), color = "red", size = 1.5) + 
+  geom_point() + 
+  labs(
+    x        = "Number of traits (p)",
+    y        = "REML eigenvalue",
+    color    = "Index (i)"
+  )
+
+ggsave("../figs/index.pdf", device = "pdf")
+```
+
+## Figure 4: Difference between REML and MANOVA estimates
+
+We repeat the simulations from the previous section, but now with parameter values described in the first paragraphs of Section 4.2.
+
+```{r eval = perform_simulations}
+# experiment parameters
+p_vals <- seq(10, 70, by=10)
+n_reps <- 50
+max_idx <- 5
+
+methods <- list(
+  MANOVA = manova_2way_df,
+  REML = stepreml_2way_df
+)
+
+# model parameters
+sigma_a <- 1
+sigma_b <- 2
+sigma_e <- 1
+
+I <- 100 
+J <- 3 
+K <- 5 
+
+mu <- 2
+
+make_sigmas <- list(
+  A = function(p) {sigma_a^2 * diag(rbinom(p, 1, 0.5))},
+  B = function(p) {sigma_b^2 * diag(rbinom(p, 1, 0.5))},
+  E = function(p) {sigma_e^2 * diag(p)}
+)
+
+make_mu <- function(p) {rep(mu, p)}
+
+comp_df <- repeated_sample(p_vals, I, J, K, n_reps, methods, make_sigmas, make_mu, max_idx=5)
+```
+```{r eval = !perform_simulations, include = FALSE}
 comp_df <- read_csv(
   "../data/REML-MANOVA-eigenvalue-comparison.csv",
   col_types = c("i", "i", "c", "i", "c", "d", "d")
@@ -405,7 +379,7 @@ We see that the largest eigenvalues of  $\hat{\Sigma}_A$ are adjusted up slightl
 comp_summary <- comp_df %>%
   pivot_wider(names_from = "method", values_from = "sample_eig") %>%
   mutate(est_diff = REML - MANOVA) %>%
-  group_by(q, level, eig_idx) %>%
+  group_by(p, level, eig_idx) %>%
   summarize(
     diff_mean = mean(est_diff),
     diff_sd = sd(est_diff)
@@ -413,15 +387,13 @@ comp_summary <- comp_df %>%
 ```
 ```{r e-diff}
 comp_summary %>%
-  ggplot(aes(x = q, y = diff_mean, color = ordered(eig_idx))) +
+  ggplot(aes(x = p, y = diff_mean, color = ordered(eig_idx))) +
   geom_line() +
   geom_point() + 
   facet_wrap(
     ~ level,
     labeller = label_bquote(.(cov_names[level]))) +
   labs(
-    title = "Difference between REML and MANOVA eigenvalues",
-    subtitle = "Mean difference of 50 replicates of top-5 eigenvalues",
     y = expression(lambda["i,R"] - lambda["i,M"]),
     x = "Number of traits (p)",
     color = "Index (i)"

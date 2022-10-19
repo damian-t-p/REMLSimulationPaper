@@ -1,5 +1,5 @@
 ---
-title: "Compare Calvin-Dijkstra REML estimates to others"
+title: "Simulations for Section 3"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{compare_REML}
@@ -10,13 +10,15 @@ vignette: >
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
-  comment = "#>"
+  comment  = "#>",
+  echo     = TRUE,
+  message  = FALSE,
+  warning  = FALSE
 )
 ```
 
 ```{r setup}
 library(REMLSimulationPaper)
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
 ```{r}
@@ -34,12 +36,11 @@ pacman::p_load_gh(
 )
 ```
 
-# Covariance estimates 
+This document contains code for producing simulations and figures used in Section 3.
 
-To illustrate the different estimators, we choose an example with parameters that Jacqueline described in out last meeting.
-That is, we have $I = 100$ sires each paired with $J = 3$ dams, and with each pairing producing $K = 5$ offspring.
+# Table 1: Comparisons of estimation methods
 
-However, we only use 4 traits, since we want to be able to compute the estimates in all cases, and this is the largest number of traits for which I can relatively quickly run `lme()`.
+As described in eq. (3), we set $p = 4, I = 100, J = 3, K = 5$.
 ```{r}
 p <- 4 # number of traits
 
@@ -48,17 +49,14 @@ J <- 3 # number of dams
 K <- 5 # number of individuals per line
 ```
 
-We also take the among-sire, among-dam and among-individual covariance matrices to be diagonal matrices with some zeroes alonf the diagonal.
-Specifically,
+We also take the among-sire, among-dam and among-individual covariance matrices as specified in eq. (4).
+That is,
 \[
-  A = \sigma_A^2 \begin{pmatrix}1&&&\\&1&&\\&&0&\\&&&0\end{pmatrix}, 
-  \qquad B = \sigma_B^2 \begin{pmatrix}1&&&\\&0&&\\&&0&\\&&&1\end{pmatrix},
-  \qquad E = \sigma_E^2 I
+  \Sigma_A = \sigma_A^2 \begin{pmatrix}1&&&\\&1&&\\&&0&\\&&&0\end{pmatrix}, 
+  \qquad \Sigma_B = \sigma_B^2 \begin{pmatrix}1&&&\\&0&&\\&&0&\\&&&1\end{pmatrix},
+  \qquad \Sigma_E = \sigma_E^2 I,
 \]
-
-However, we will not use this information when fitting --- all procedures are run with no assumptions on the structure of the covariance.
-
-For this example, we choose $\sigma_A = 5, \sigma_B = 3, \sigma_E = 1$ and $\mu = (1, 2, 3, 4)$.
+where we choose $\sigma_A = 5, \sigma_B = 3, \sigma_E = 1$ and $\mu = (1, 2, 3, 4)$.
 
 ```{r}
 mu <- 1:p
@@ -72,7 +70,7 @@ B <- sigma_b^2 * diag(c(1, 0, 0, 1))
 E <- sigma_e^2 * diag(p)
 ```
 
-The function `rhalfsib()` produces a random realization from the half-sib design with specified intercept, covariance matrices and counts.
+The function `rhalfsib()` from the `dpavlyshyn\halfsibdesign` produces a random realization from the half-sib design with specified intercept, covariance matrices and counts.
 
 We sample one such design and store it in a long data frame.
 ```{r}
@@ -80,46 +78,46 @@ df <- rhalfsib(mu, A, I, B, J, E, K)
 head(df)
 ```
 
-We can then use the stepwise algorithm to fit REML to this data
-
+We then compute the stepwise REML and pseudo REML and MANOVA estimates using the corresponding functions contained in `halfsibdesign`.
 ```{r}
 stepreml_fit <- stepreml_2way(df)
 pseudoreml_fit <- preml_2way(df)
-```
-
-## Comparison to MANOVA
-
-Fitting a MANOVA to the same data, we estimates that are somewhat similar, but not necessarily positive definite.
-
-The REML criterion evaluated at the MANOVA estimate is slightly higher than when it is evaluated at the REML estimate.
-This is to be expected, as the MANOVA fit optimizes the same ebjective function, but does so over an unconstrained domain.
-
-```{r}
 manova_fit <- manova_2way(df)
 ```
 
 ## Comparison to `lme()`
 
 Next, we fit a mixed-effects model to the data using `lme()` to optimize REML.
-The syntax is a bit confusing, since the "individual" effect is folded into the residual variance rather than being considered a random effect.
+The specification for the two-way MANOVA in `lme()` is complicated by the fact that, by default, this function includes uncorrolated homoskedastic error terms.
 
-Hence, we only consider sire and dam random effects and specify that the residual erors have unspecified covariance matrices within each individual.
+To explain the specification, we write the model as
+\[
+y_{ijk,q} = \overbrace{\mu_q}^{\text{fixed effect}} + \overbrace{\alpha_{i,q} + \beta_{ij,q}}^{\text{random effect}} + \overbrace{\epsilon_{ijk,q}}^{\text{residual error}}.
+\]
+
+The fixed-effectd are modelled by $y_{ijk,q} \sim \mu_q$ (`fixed = value ~ -1 + trait`).
+For the random effects, we estimate the covariances between trait-entries of $\alpha_i, \beta_{ij}$.
+That is, we group the random effects at both the sires and the dams level (`random = ~ -1 + trait | sire/dam`).
+
+Last, the variance of each $\epsilon_{ijk,q}$ depends on $q$ only (`weights = varIdent(form = ~ 1 | trait)`), whereas the $\epsilon_{ijk,q}$ are uncorrelated between individuals, and we make no assumptions on the correlations among traits (`correlation = corSymm(form =  ~ 1 | sire/dam/individual)`).
 ```{r}
 lme1 <- lme(
-  value       ~ -1 + trait,
+  fixed       = value ~ -1 + trait,
   data        = df,
   random      = ~ -1 + trait | sire/dam,
-  weights     = varIdent(form = ~ 1 | trait), # different variances for each trait
-  correlation = corSymm(form =  ~ 1 | sire/dam/individual), # residual errors correlated within individual group
+  weights     = varIdent(form = ~ 1 | trait), # residual variance structure
+  correlation = corSymm(form =  ~ 1 | sire/dam/individual), # residual correlation structure
   method      = "REML",
   control     = list(returnObject = TRUE) # don't error if no convergence
   )
 ```
 
+The `get_covs()` function contained in this package then computes the estimates $\hat{\Sigma}_A, \hat{\Sigma}_B, \hat{\Sigma}_E$ from the output of an `lme` fit.
 ```{r}
 lme_fit <- get_covs(lme1)
 ```
 
+We then summarize the eigenvalues and REML criteria of the different fits, saving the results to the `/data/` directory.
 ```{r}
 cov_names = c(S1 = "Sigma_E", S2 = "Sigma_B", S3 = "Sigma_A")
 

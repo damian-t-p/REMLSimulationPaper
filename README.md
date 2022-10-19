@@ -37,4 +37,4 @@ running
 devtools::build_vignettes(pkg = "REMLSimulationPaper")
 ```
 
-The compiled vignettes can be found in the `/docs/` directory.
+The compiled vignettes can be found in the `/doc/` directory.
