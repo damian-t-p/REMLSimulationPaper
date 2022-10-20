@@ -1,5 +1,9 @@
+#' Extract estimated covariance matrices from `lme()` fit
+#'
+#' @param fit Object returned by `lme()` with random effect formula with grouping `sire/dam'
+#' 
 #' @export
-get_covs <- function(fit){
+get_covs <- function(fit) {
   
   resid_sds <- fit$sigma * sqrt((1 + c(0, fit$modelStruct$varStruct)))
   resid_corr <- as.matrix(fit$modelStruct$corStruct)[[1]]
