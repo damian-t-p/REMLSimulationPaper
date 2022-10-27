@@ -6,8 +6,9 @@
 <!-- badges: start -->
 <!-- badges: end -->
 
-This is a package which reproduces the simulations and figures used in
-the REML simulation paper.
+This is a package which reproduces the simulations and figures of the
+paper “Comparison of REML methods for the study of phenome-wide genetic
+variation.”
 
 ## Installation
 
@@ -38,3 +39,11 @@ devtools::build_vignettes(pkg = "REMLSimulationPaper")
 ```
 
 The compiled vignettes can be found in the `/doc/` directory.
+
+## Reference
+
+Damian Pavlyshyn, Iain M. Johnstone and Jacqueline L. Sztepanacz.
+“Comparison of REML methods for the study of phenome-wide genetic
+variation,” October 2022. URL
+[`https://arxiv.org/abs/2210.11709`](https://arxiv.org/abs/2210.11709).
+arXiv:2210.11709 (stat.AP)

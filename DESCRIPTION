@@ -3,11 +3,14 @@ Title: Reproduce Figures for REML Simulation Paper
 Version: 0.0.0.9000
 Authors@R: 
     c(
-	person("Damian", "Pavlyshyn", , "damian.pavlyshyn@burnet.edu.au", role = c("aut", "cre")),
-	person(c("Iain", "M."), "Johnstone", , "imj@stanford.edu", role = "ctb"),
-	person(c("Jacqueline", "L."), "Sztepanacz", , "j.sztepanacz@utoronto.ca", role = "ctb")
+	person("Damian", "Pavlyshyn", email = "damian.pavlyshyn@burnet.edu.au", role = c("aut", "cre"),
+	       comment = c(ORCID = "0000-0001-6929-878X")),
+	person(c("Iain", "M."), "Johnstone", email = "imj@stanford.edu", role = "ctb",
+	       comment = c(ORCID = "0000-0002-2865-3076")),
+	person(c("Jacqueline", "L."), "Sztepanacz", email = "j.sztepanacz@utoronto.ca", role = "ctb",
+	       comment = c(ORCID = "0000-0002-4962-0150"))
     )
-Description: This is a package which reproduces the simulations and figures used in the REML simulation paper.
+Description: This is a package which reproduces the simulations and figures used in the paper "Comparison of REML methods for the study of phenome-wide genetic variation."
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
