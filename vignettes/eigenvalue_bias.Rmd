@@ -16,6 +16,13 @@ knitr::opts_chunk$set(
   warning = FALSE
 )
 
+# standardised colours
+doc_colours <- c(
+  "#1B9E77",
+  "#D95F02",
+  "#7570B3"
+)
+
 # should all simulations be performed? If this is set to FALSE, the simulated 
 # data will instead be loaded from the local ./data/ directory.
 perform_simulations = FALSE
@@ -154,56 +161,92 @@ eig_stat_nn <- eig_ref_reml %>%
     a_type  = factor(a_type, levels = names(a_names)),
     b_type  = factor(b_type, levels = names(b_names))
   )
+
+a_sub <- c("identity", "chisquared")
+b_sub <- c("identity", "highcorr")
+
+eig_stat_nn_sub <- eig_stat_nn %>%
+  filter(
+    (a_type %in% a_sub) & (b_type %in% b_sub)
+  )
 ```
 
 Having performed these simulations, we first plot the number of eigenvalues that are exactly 0 in each estimate.
 
 ```{r zero-evals, fig.height=9, fig.width=7,}
-eig_stat_nn %>% 
-  ggplot(aes(
-    x = nearly_null_dim,
-    y = nzeroes,
-    fill = ordered(a_var), 
-    color = ordered(a_var))) + 
-  geom_abline(
-    slope = 1,
-    intercept = 0,
-    linetype = "dashed") + 
-  stat_summary(
-    fun.min = function(x) quantile(x, 0.25)[[1]],
-    fun.max = function(x) quantile(x, 0.75)[[1]],
-    geom = "ribbon",
-    color = NA, alpha = 0.5) + 
-  stat_summary(
-    fun = "mean",
-    geom = "line",
-    size = 1) + 
-  facet_grid(
-    b_type ~ a_type,
-    labeller = label_bquote(
-      cols = Sigma[A] : .(a_names[a_type]),
-      rows = Sigma[B] : .(b_names[b_type])
-    )
-  ) + 
-  labs(
-    x = expression("Nearly-null dimension of"~Sigma[A]),
-    y = expression("Number of zero eigenvalues of"~hat(Sigma)[A]),
-    color = expression(Sigma[A] ~ scaling ~ (c[A])),
-    fill = expression(Sigma[A] ~ scaling ~ (c[A]))
-  ) +
-  coord_cartesian(
-    xlim = c(0, 50),
-    ylim = c(0, 50),
-    expand = FALSE
-  ) +
-  scale_fill_brewer(type = "qual") + 
-  scale_color_brewer(type = "qual") +
-  theme(
-    legend.position = "bottom",
-    panel.spacing = unit(0.75, "lines")
-  )
+zero_eval_dfs <- list(
+  main = eig_stat_nn_sub,
+  supp = eig_stat_nn
+)
 
-ggsave("../figs/zero-evals.pdf", device = "pdf")
+zero_eval_figs <- lapply(
+  zero_eval_dfs,
+  function(df) {
+    df %>% 
+      ggplot(aes(
+        x = nearly_null_dim,
+        y = nzeroes,
+        fill = ordered(a_var), 
+        color = ordered(a_var))) + 
+      geom_abline(
+        slope = 1,
+        intercept = 0,
+        linetype = "dashed") + 
+      stat_summary(
+        fun.min = function(x) quantile(x, 0.25)[[1]],
+        fun.max = function(x) quantile(x, 0.75)[[1]],
+        geom = "ribbon",
+        color = NA, alpha = 0.5) + 
+      stat_summary(
+        fun = "mean",
+        geom = "line",
+        size = 1) + 
+      facet_grid(
+        b_type ~ a_type,
+        labeller = label_bquote(
+          cols = Sigma[A] : .(a_names[a_type]),
+          rows = Sigma[B] : .(b_names[b_type])
+        )
+      ) + 
+      labs(
+        x = expression("Nearly-null dimension of"~Sigma[A]),
+        y = expression("Number of zero eigenvalues of"~hat(Sigma)[A]),
+        color = expression(Sigma[A] ~ scaling ~ (c[A])),
+        fill = expression(Sigma[A] ~ scaling ~ (c[A]))
+      ) +
+      coord_cartesian(
+        xlim = c(0, 50),
+        ylim = c(0, 50),
+        expand = FALSE
+      ) +
+      ## scale_fill_brewer(type = "qual") + 
+      ## scale_color_brewer(type = "qual") +
+      scale_color_manual(values = doc_colours) +
+      scale_fill_manual(values = doc_colours) +
+      theme(
+        legend.position = "bottom",
+        panel.spacing = unit(0.75, "lines")
+      )
+  }
+)
+```
+
+```{r fig.height=5.5, fig.width=5}
+ggsave(
+  filename = "../figs/zero-evals.pdf",
+  plot     = zero_eval_figs$main,
+  device   = "pdf"
+)
+zero_eval_figs$main
+```
+
+```{r fig.height=9, fig.width=7}
+ggsave(
+  filename = "../figs/zero-evals-supp.pdf",
+  plot     = zero_eval_figs$supp,
+  device   = "pdf"
+)
+zero_eval_figs$supp
 ```
 
 We repeat the same plot, but now plotting the eigenvalues that are less than 1.
@@ -246,8 +289,10 @@ eig_stat_nn %>%
     ylim = c(0, 50),
     expand = FALSE
   ) +
-  scale_fill_brewer(type = "qual") + 
-  scale_color_brewer(type = "qual") +
+  ## scale_fill_brewer(type = "qual") + 
+  ## scale_color_brewer(type = "qual") +
+  scale_color_manual(values = doc_colours) +
+  scale_fill_manual(values = doc_colours) +
   theme(
     legend.position = "bottom",
     panel.spacing = unit(0.75, "lines")
@@ -373,51 +418,86 @@ eig_stat_me <- eig_ref %>%
     b_type  = factor(b_type, levels = names(b_names))
   )
 
-eig_stat_me %>%
-  filter(nearly_null_dim < p) %>%
-  ggplot(aes(
-    x     = nearly_null_dim,
-    y     = max_diff/abs(max_reml),
-    fill  = ordered(a_var), 
-    color = ordered(a_var))) + 
-  stat_summary(
-    fun.min = function(x) quantile(x, 0.25)[[1]],
-    fun.max = function(x) quantile(x, 0.75)[[1]],
-    geom = "ribbon",
-    color = NA, alpha = 0.5) + 
-  stat_summary(
-    fun = "mean",
-    geom = "line",
-    size = 1) + 
-  facet_grid(
-    b_type ~ a_type,
-    labeller = label_bquote(
-      cols = Sigma[A] : .(a_names[a_type]),
-      rows = Sigma[B] : .(b_names[b_type])
-    ),
-    scale = "free_y"
-  ) + 
-  labs(
-    x = expression("Nearly-null dimension of"~Sigma[A]),
-    ## y = expression((lambda[max](hat(Sigma)["A, MANOVA"]) - lambda[max](hat(Sigma)["A, REML"])) /  lambda[max](hat(Sigma)["A, REML"]) ),
-    y = expression((hat(lambda)[max]["1, MANOVA"] - hat(lambda)["1, REML"]) /  hat(lambda)["1, REML"]),
-    color = expression(Sigma[A] ~ scaling ~ (c[A])),
-    fill = expression(Sigma[A] ~ scaling ~ (c[A]))
-  ) +
-  coord_cartesian(
-    xlim = c(0, NA),
-    ylim = c(NA, 0),
-    expand = FALSE
-  ) +
-  scale_y_continuous(expand = c(0.05, 0)) + 
-  scale_fill_brewer(type = "qual") + 
-  scale_color_brewer(type = "qual") +
-  theme(
-    legend.position = "bottom",
-    panel.spacing = unit(0.75, "lines")
+eig_stat_me_sub <- eig_stat_me %>%
+  filter(
+    (a_type %in% a_sub) & (b_type %in% b_sub)
   )
 
-ggsave("../figs/bias-largest.pdf", device = "pdf")
+bias_dfs <- list(
+  main = eig_stat_me_sub,
+  supp = eig_stat_me
+)
+
+bias_figs <- lapply(
+  bias_dfs,
+  function (df) {
+    df %>%
+      filter(nearly_null_dim < p) %>%
+      ggplot(aes(
+        x     = nearly_null_dim,
+        y     = max_diff/abs(max_reml),
+        fill  = ordered(a_var), 
+        color = ordered(a_var))) + 
+      stat_summary(
+        fun.min = function(x) quantile(x, 0.25)[[1]],
+        fun.max = function(x) quantile(x, 0.75)[[1]],
+        geom = "ribbon",
+        color = NA, alpha = 0.5) + 
+      stat_summary(
+        fun = "mean",
+        geom = "line",
+        size = 1) + 
+      facet_grid(
+        b_type ~ a_type,
+        labeller = label_bquote(
+          cols = Sigma[A] : .(a_names[a_type]),
+          rows = Sigma[B] : .(b_names[b_type])
+        ),
+        scale = "free_y"
+      ) + 
+      labs(
+        x = expression("Nearly-null dimension of"~Sigma[A]),
+        ## y = expression((lambda[max](hat(Sigma)["A, MANOVA"]) - lambda[max](hat(Sigma)["A, REML"])) /  lambda[max](hat(Sigma)["A, REML"]) ),
+        y = expression((hat(lambda)[max]["1, MANOVA"] - hat(lambda)["1, REML"]) /  hat(lambda)["1, REML"]),
+        color = expression(Sigma[A] ~ scaling ~ (c[A])),
+        fill = expression(Sigma[A] ~ scaling ~ (c[A]))
+      ) +
+      coord_cartesian(
+        xlim = c(0, NA),
+        ylim = c(NA, 0),
+        expand = FALSE
+      ) +
+      scale_y_continuous(expand = c(0.05, 0)) + 
+      ## scale_fill_brewer(type = "qual") + 
+      ## scale_color_brewer(type = "qual") +
+      scale_color_manual(values = doc_colours) +
+      scale_fill_manual(values = doc_colours) +
+      theme(
+        legend.position = "bottom",
+        panel.spacing = unit(0.75, "lines")
+      )
+  }
+)
+
+## ggsave("../figs/bias-largest.pdf", device = "pdf")
+```
+
+```{r fig.height=5.5, fig.width=6}
+ggsave(
+  filename = "../figs/bias-largest.pdf",
+  plot     = bias_figs$main,
+  device   = "pdf"
+)
+bias_figs$main
+```
+
+```{r fig.height=9, fig.width=7}
+ggsave(
+  filename = "../figs/bias-largest-supp.pdf",
+  plot     = bias_figs$supp,
+  device   = "pdf"
+)
+bias_figs$supp
 ```
 
 We repeat the previous plot, but now comparing the largest eigenvalues of the REML eigenvalues with the corresponding population eigenvalues.
@@ -427,50 +507,87 @@ eig_stat_me <- eig_stat_me %>%
   mutate(
     a_pop_maxeig = sapply(a_type, function(i) a_pop_maxeigs[[as.character(i)]], USE.NAMES=FALSE),
     reml_maxeig_error = max_reml - a_pop_maxeig
-    )
-
-eig_stat_me %>% 
-  filter(nearly_null_dim < p) %>%
-  ggplot(aes(
-    x    = nearly_null_dim,
-    y    = reml_maxeig_error/a_pop_maxeig,
-    fill = ordered(a_var),
-    color = ordered(a_var))) + 
-  stat_summary(
-    fun.min = function(x) quantile(x, 0.25)[[1]],
-    fun.max = function(x) quantile(x, 0.75)[[1]],
-    geom = "ribbon",
-    color = NA, alpha = 0.5) + 
-  stat_summary(
-    fun = "mean",
-    geom = "line",
-    size = 1) + 
-  facet_grid(
-    b_type ~ a_type,
-    labeller = label_bquote(
-      cols = Sigma[A] : .(a_names[a_type]),
-      rows = Sigma[B] : .(b_names[b_type])
-    ),
-    scale = "free_y"
-  ) + 
-  labs(
-    x = expression("Nearly-null dimension of"~Sigma[A]),
-    y = expression((hat(lambda)["A, REML"] - lambda[1])/lambda[1]),
-    color = expression(Sigma[A] ~ scaling ~ (c[A])),
-    fill = expression(Sigma[A] ~ scaling ~ (c[A]))
-  ) +
-  coord_cartesian(
-    xlim = c(0, NA),
-    ## ylim = c(0, NA),
-    expand = FALSE
-  ) +
-  scale_y_continuous(expand = c(0.05, 0)) + 
-  scale_fill_brewer(type = "qual") + 
-  scale_color_brewer(type = "qual") +
-  theme(
-    legend.position = "bottom",
-    panel.spacing = unit(0.75, "lines")
   )
 
-ggsave("../figs/bias-to-truth.pdf", device = "pdf")
+a_sub <- c(a_sub, "chisquared")
+
+eig_stat_me_sub <- eig_stat_me %>%
+  filter(
+    (a_type %in% a_sub) & (b_type %in% b_sub)
+  )
+
+bias_truth_dfs <- list(
+  main = eig_stat_me_sub,
+  supp = eig_stat_me
+)
+
+bias_truth_figs <- lapply(
+  bias_truth_dfs,
+  function (df) {
+    df %>% 
+      filter(nearly_null_dim < p) %>%
+      ggplot(aes(
+        x    = nearly_null_dim,
+        y    = reml_maxeig_error/a_pop_maxeig,
+        fill = ordered(a_var),
+        color = ordered(a_var))) + 
+      stat_summary(
+        fun.min = function(x) quantile(x, 0.25)[[1]],
+        fun.max = function(x) quantile(x, 0.75)[[1]],
+        geom = "ribbon",
+        color = NA, alpha = 0.5) + 
+      stat_summary(
+        fun = "mean",
+        geom = "line",
+        size = 1) + 
+      facet_grid(
+        b_type ~ a_type,
+        labeller = label_bquote(
+          cols = Sigma[A] : .(a_names[a_type]),
+          rows = Sigma[B] : .(b_names[b_type])
+        ),
+        scale = "free_y"
+      ) + 
+      labs(
+        x = expression("Nearly-null dimension of"~Sigma[A]),
+        y = expression((hat(lambda)["A, REML"] - lambda[1])/lambda[1]),
+        color = expression(Sigma[A] ~ scaling ~ (c[A])),
+        fill = expression(Sigma[A] ~ scaling ~ (c[A]))
+      ) +
+      coord_cartesian(
+        xlim = c(0, NA),
+        ## ylim = c(0, NA),
+        expand = FALSE
+      ) +
+      scale_y_continuous(expand = c(0.05, 0)) + 
+      ## scale_fill_brewer(type = "qual") + 
+      ## scale_color_brewer(type = "qual") +
+      scale_color_manual(values = doc_colours) +
+      scale_fill_manual(values = doc_colours) +
+      theme(
+        legend.position = "bottom",
+        panel.spacing = unit(0.75, "lines")
+      )
+  }
+)
+## ggsave("../figs/bias-to-truth.pdf", device = "pdf")
+```
+
+
+```{r fig.height=5.5, fig.width=6}
+ggsave(
+  filename = "../figs/bias-to-truth.pdf",
+  plot     = bias_truth_figs$main,
+  device   = "pdf"
+)
+bias_truth_figs$main
+```
+
+```{r fig.height=9, fig.width=7}
+ggsave(
+  filename = "../figs/bias-to-truth-supp.pdf",
+  plot     = bias_truth_figs$supp,
+  device   = "pdf"
+)
+bias_truth_figs$supp
 ```

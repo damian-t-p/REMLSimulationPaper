@@ -18,6 +18,15 @@ knitr::opts_chunk$set(
   fig.height = 5
 )
 
+# standardised colours
+doc_colours <- c(
+  "#1B9E77",
+  "#D95F02",
+  "#7570B3"
+)
+
+doc_seq_palette = colorRampPalette(c(doc_colours[2], doc_colours[3]))
+
 # should all simulations be performed? If this is set to FALSE, the simulated 
 # data will instead be loaded from the local ./data/ directory.
 perform_simulations = FALSE
@@ -91,7 +100,9 @@ eig_df <- tibble(
   mutate(Type = factor(Type, levels = c("True", "REML")))
 
 ggplot(eig_df, mapping = aes(x = Eigenvalue, fill = Type)) + 
-  geom_histogram() + 
+  geom_histogram(
+    colour = "black",
+    fill = doc_colours[[1]]) +
   facet_wrap(
     ~Type,
     labeller = label_bquote(.(estimate_names[as.character(Type)]))) + 
@@ -162,7 +173,7 @@ ggplot(mapping = aes(x = eigs_reml_est, y = eigs_pairwise_est - eigs_reml_est)) 
   geom_point() + 
   labs(
     x = expression("Eigenvalues"~lambda["i, R"]~"of"~Sigma["A,R"]),
-    y = expression(lambda["i, R"] - lambda["i, P"])
+    y = expression(lambda["i, P"] - lambda["i, R"])
   )
 
 ggsave("../figs/eval-diffs.pdf", device = "pdf")
@@ -315,12 +326,15 @@ summ_df %>%
     scales = "free_y",
     labeller = label_bquote(.(cov_names[level]))) + 
   geom_line() + 
-  geom_hline(aes(yintercept = pop_eig), color = "red", size = 1.5) + 
+  geom_hline(aes(yintercept = pop_eig), color = doc_colours[[1]], size = 1.5) + 
   geom_point() + 
   labs(
     x        = "Number of traits (p)",
     y        = "REML eigenvalue",
     color    = "Index (i)"
+  ) +
+  scale_color_manual(
+    values = doc_seq_palette(length(unique(summ_df$eig_idx)))
   )
 
 ggsave("../figs/index.pdf", device = "pdf")
@@ -397,6 +411,9 @@ comp_summary %>%
     y = expression(lambda["i,R"] - lambda["i,M"]),
     x = "Number of traits (p)",
     color = "Index (i)"
+  ) +
+  scale_color_manual(
+    values = doc_seq_palette(length(unique(summ_df$eig_idx)))
   )
 
 ggsave("../figs/e-diff.pdf", device = "pdf")
