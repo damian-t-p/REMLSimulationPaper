@@ -540,13 +540,14 @@ bias_truth_figs <- lapply(
         fun = "mean",
         geom = "line",
         size = 1) + 
-      facet_grid(
+      ggh4x::facet_grid2(
         b_type ~ a_type,
         labeller = label_bquote(
           cols = Sigma[A] : .(a_names[a_type]),
           rows = Sigma[B] : .(b_names[b_type])
         ),
-        scale = "free_y"
+        scale = "free_y",
+        independent = "y"
       ) + 
       labs(
         x = expression("Nearly-null dimension of"~Sigma[A]),
