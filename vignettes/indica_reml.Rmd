@@ -1,0 +1,178 @@
+---
+title: "Figures for *Oryza satvia* data"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{indica_reml}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+
+doc_colours <- c(
+  "#1B9E77",
+  "#D95F02",
+  "#7570B3"
+)
+```
+
+```{r setup}
+library(REMLSimulationPaper)
+```
+
+# Indica data
+
+```{r}
+df_indica_1000 <- read_csv("../data/indica_1000.csv", col_types = "cic") %>%
+  mutate(group = factor(group, levels = c("individual", "replicate")))
+
+group_names = c(
+  "individual" = "Line",
+  "replicate"  = "Replicate"
+)
+```
+
+## Figure 12
+
+```{r}
+df_indica_1000_perm <- df_indica_1000 %>%
+  filter(iter == 1 | type == "reference") %>%
+  pivot_longer(
+    cols      = starts_with("eig"),
+    names_to  = "eig_idx",
+    values_to = "eigenvalue"
+  )
+
+df_indica_1000_outliers <- df_indica_1000_perm %>%
+  mutate(
+    outlier_threshold = case_match(
+      group,
+      "individual" ~ 25,
+      "replicate"  ~ 3
+    )
+  ) %>%
+  group_by(type, group) %>%
+  filter(eigenvalue > outlier_threshold) %>%
+  ungroup()
+
+perm_names <- c(
+  "parametric_bootstrap" = "Parametric bootstrap",
+  "permutation-all"      = "Replicate permutations",
+  "reference"            = "Original data"
+)
+
+indica_perm_fig <- df_indica_1000_perm %>%
+  ggplot(aes(x = eigenvalue)) +
+  geom_segment(
+    data    = df_indica_1000_outliers,
+    mapping = aes(xend = eigenvalue),
+    y    = 0,
+    yend = 40,
+    color = doc_colours[2],
+    arrow = arrow(angle = 20,
+                  length = unit(0.2, "cm"),
+                  type = "closed"),
+    linewidth = 0.8,
+    linejoin = "mitre"
+  ) +
+  geom_histogram(
+    aes(y = after_stat(ifelse(count > 700, count - (1000-2*136), count))),
+    fill = doc_colours[1],
+    color = "black"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) + 
+  facet_grid(
+    factor(type, levels = c("reference", "parametric_bootstrap", "permutation-all")) ~ group,
+    scales = "free_x",
+    labeller = as_labeller(c(perm_names, group_names))
+  ) +
+  theme_bw() +
+  labs(
+    ## title = "Estimated nontrivial eigenvalues in a typical set of permutations",
+    x     = "Eigenvalue",
+    y     = "Count"
+  )
+```
+
+```{r, fig.width=6, fig.height=8}
+ggsave(
+  filename = "../figs/indica-perm-fig.pdf",
+  plot     = indica_perm_fig,
+  device   = "pdf"
+)
+
+indica_perm_fig
+```
+
+## Figure 13
+
+```{r}
+dataset_names <- c(
+  #"gene100"  = "100 Genes",
+  "gene1000" = "1000 Genes"
+)
+
+df_indica_combined <- mutate(
+  dplyr::select(df_indica_1000, type, iter, group, num_range("eig", 1:5)),
+  dataset = "gene1000"
+)
+
+```
+
+```{r}
+eig_idx_names <- c(
+  "eig1" = "Eigenvalue 1",
+  "eig2" = "Eigenvalue 2",
+  "eig3" = "Eigenvalue 3"
+)
+
+df_indica_long <- df_indica_combined %>%
+  filter(group == "individual") %>%
+  pivot_longer(
+    num_range("eig", 1:3),
+    names_to = "eig_idx",
+    values_to = "eigenvalue")
+
+indica_maxeig_fig <- df_indica_long %>%
+  filter(
+  (type == "parametric_bootstrap") &
+    (dataset == "gene1000")
+  ) %>%
+  ggplot(aes(x = eigenvalue)) +
+  geom_histogram(
+    fill = doc_colours[1],
+    color = "black") +
+  geom_vline(
+    data = filter(
+      df_indica_long,
+      (type == "reference") &
+        (eig_idx %in% c("eig1", "eig2", "eig3")) &
+        (dataset == "gene1000")),
+    mapping = aes(xintercept = eigenvalue),
+    color = doc_colours[2], linewidth = 1, linetype = "dashed"
+  ) +
+  facet_wrap(
+    ~ eig_idx,
+    labeller = as_labeller(c(eig_idx_names))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) + 
+  theme_bw() +
+  labs(
+    x = "Eigenvalue",
+    y = "Count"
+    ## title = "Histogram of largest bootstrapped eigenvalues"
+  )
+```
+
+```{r, fig.width=8, fig.height=4}
+ggsave(
+  filename = "../figs/indica-maxeig-fig.pdf",
+  plot     = indica_maxeig_fig,
+  device   = "pdf"
+)
+
+indica_maxeig_fig
+```
