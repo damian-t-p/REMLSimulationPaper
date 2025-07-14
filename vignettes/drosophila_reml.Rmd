@@ -1,0 +1,182 @@
+---
+title: "Figures for *Drosophila melanogaster* data"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{drosophila_reml}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+
+# standardised colours
+doc_colours <- c(
+  "#1B9E77",
+  "#D95F02",
+  "#7570B3"
+)
+```
+
+```{r setup}
+library(REMLSimulationPaper)
+```
+
+# CHC data
+
+```{r}
+df_chc <- read_csv("../data/chc_melanogaster_eigs.csv", col_types = "cic") %>%
+  mutate(group = factor(group, levels = c("sire", "dam", "animal")))
+
+group_names = c(
+  "sire"   = "Sire",
+  "dam"    = "Dam",
+  "animal" = "Animal"
+)
+```
+
+## Figure 9: Baseline plots
+
+```{r chc-ref}
+df_chc_ref <- df_chc %>%
+  filter(type == "reference") %>%
+  pivot_longer(
+    cols      = starts_with("eig"),
+    names_to  = "eig_idx",
+    values_to = "eigenvalue"
+  )
+
+chc_ref_fig <- df_chc_ref %>%
+  ggplot(aes(x = eigenvalue)) +
+  geom_histogram(
+    fill = doc_colours[1],
+    color = "black") +
+  facet_wrap(
+    ~ group,
+    scales = "free",
+    labeller = as_labeller(group_names)
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) + 
+  theme_bw() +
+  labs(
+    ## title = "Estimated eigenvalues of CHC covariance components",
+    x     = "Eigenvalue",
+    y     = "Count"
+  )
+```
+
+```{r, fig.width=8, fig.height=4}
+ggsave(
+  filename = "../figs/chc-ref-fig.pdf",
+  plot     = chc_ref_fig,
+  device   = "pdf"
+)
+
+chc_ref_fig
+```
+
+## Figure 10: Permutation test
+
+```{r}
+df_chc_perm <- df_chc %>%
+  filter(startsWith(type, "permutation") & iter == 1) %>%
+  pivot_longer(
+    cols      = starts_with("eig"),
+    names_to  = "eig_idx",
+    values_to = "eigenvalue"
+  )
+
+perm_names <- c(
+  "permutation-all"         = "Animals permuted",
+  "permutation-animal_sire" = "Animals permuted within sires",
+  "permutation-dam_sire"    = "Dams permuted"
+)
+
+chc_perm_fig <- df_chc_perm %>%
+  ggplot(aes(x = eigenvalue)) +
+  geom_histogram(
+    fill = doc_colours[1],
+    color = "black") +
+  facet_grid(
+    factor(type,
+           levels = c("permutation-all", "permutation-dam_sire", "permutation-animal_sire")) ~ group,
+    scales = "free_x",
+    labeller = as_labeller(c(perm_names, group_names))
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) + 
+  theme_bw() +
+  labs(
+    ## title = "Estimated eigenvalues in a typical set of permutations",
+    x     = "Eigenvalue",
+    y     = "Count"
+  )
+```
+
+
+```{r, fig.width=8, fig.height=8}
+ggsave(
+  filename = "../figs/chc-perm-fig.pdf",
+  plot     = chc_perm_fig,
+  device   = "pdf"
+)
+
+chc_perm_fig
+```
+
+## Figure 11: Largest eigenvalues
+```{r}
+df_ref <- df_chc %>%
+  filter(type == "reference") %>%
+  dplyr::select(-type) %>%
+  expand_grid(type = c("permutation-all", "permutation-dam_sire", "permutation-animal_sire")) %>%
+  filter(
+    group != "animal" &
+      (
+        (type == "permutation-dam_sire" & group == "sire") |
+          (type == "permutation-animal_sire" & group == "dam") |
+          (type == "permutation-all")
+      )
+  )
+
+chc_maxeig_fig <- df_chc %>%
+  filter(startsWith(type, "permutation")) %>%
+  ggplot(aes(x = eig1)) +
+  geom_histogram(
+    fill = doc_colours[1],
+    color = "black") +
+  geom_vline(
+    data = df_ref,
+    mapping = aes(xintercept = eig1),
+    color = doc_colours[2], linewidth = 1, linetype = "dashed"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) + 
+  facet_grid(
+    factor(type,
+           levels = c("permutation-all", "permutation-dam_sire", "permutation-animal_sire")) ~ group,
+    scales = "free_x",
+    labeller = as_labeller(c(perm_names, group_names))
+  ) +
+  theme_bw() + 
+  labs(
+    ## title = "Maximum eigenvalues of covariance component esimated under permutation schemes",
+    x     = "Eigenvalue",
+    y     = "Count"
+  )
+```
+
+
+```{r, fig.width=8, fig.height=8}
+ggsave(
+  filename = "../figs/chc-maxeig-fig.pdf",
+  plot     = chc_maxeig_fig,
+  device   = "pdf"
+)
+
+chc_maxeig_fig
+```
