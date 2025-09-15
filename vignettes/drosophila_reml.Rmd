@@ -28,7 +28,9 @@ doc_colours <- c(
 library(REMLSimulationPaper)
 ```
 
-# CHC data
+This file creates plots for regular and bootstrapped eigenvalues stemming from the *Drosophila melanogaster* data.
+
+The scripts for generating the bootstrapped resamples can be found in [[another file]] --- the code presended here simply loads the relevant data from the `data/` directory.
 
 ```{r}
 df_chc <- read_csv("../data/chc_melanogaster_eigs.csv", col_types = "cic") %>%
@@ -41,7 +43,9 @@ group_names = c(
 )
 ```
 
-## Figure 9: Baseline plots
+# Figure 9: Baseline plots
+
+Plot the eigenvalues of the REML estimate of the raw *Drosophila melanogaster* data as it appears in [[the original study]].
 
 ```{r chc-ref}
 df_chc_ref <- df_chc %>%
@@ -81,7 +85,7 @@ ggsave(
 chc_ref_fig
 ```
 
-## Figure 10: Permutation test
+# Figure 10: Permutation test
 
 ```{r}
 df_chc_perm <- df_chc %>%
@@ -129,7 +133,7 @@ ggsave(
 chc_perm_fig
 ```
 
-## Figure 11: Largest eigenvalues
+# Figure 11: Largest eigenvalues
 ```{r}
 df_ref <- df_chc %>%
   filter(type == "reference") %>%

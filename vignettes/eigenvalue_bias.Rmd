@@ -25,10 +25,10 @@ doc_colours <- c(
 
 # should all simulations be performed? If this is set to FALSE, the simulated 
 # data will instead be loaded from the local ./data/ directory.
-perform_simulations = FALSE
+perform_simulations = TRUE
 
 # should the computed data be stored in a .RData file in ./data/?
-save_data = FALSE & perform_simulations
+save_data = TRUE & perform_simulations
 ```
 
 ```{r setup}
@@ -54,17 +54,62 @@ In all cases, the between-individuals covariance matrices will simply be identit
 
 The between-sires covariances $\Sigma_A$ are described in eq. (7)
 ```{r}
+v_row <- function(m) {
+  if (m == 1) {
+    return(1)
+  }
+  
+  r <- floor(m/2)
+  downslope <- (1 - (1:r)/(r+1))/r
+  out <- rep(1, m)
+  
+  out[2:(r+1)] <- downslope
+  out[(m-r+1):m] <- rev(downslope)
+
+  out
+}
+
+rot <- function(v, i) {
+  n <- length(v)
+  i <- i %% n
+  
+  if (i == 0) {
+    return(v)
+  }
+  
+  c(v[(n-i+1):n], v[1:(n-i)])
+}
+
+clinear <- function(p, d) {
+  m <- p - d
+  v <- v_row(m)
+
+  circ_block <- t(sapply(0:(m-1), \(i) rot(v, i)))
+
+  mat_out <- matrix(0, nrow = p, ncol = p)
+
+  if (m > 0) {
+    mat_out[1:m, 1:m] <- circ_block
+  }
+ 
+  mat_out
+}
+```
+
+```{r}
 a_types <- list(
   identity = function(p, d) diag(c(rep(1, p - d), rep(0, d))),
-  chispuared = function(p, d) diag(c(rchisp(p - d, df=5), rep(0, d))),
-  heavytail = function(p, d) diag(c(abs(rcauchy(p - d, location=5)), rep(0, d)))
+  chisquared = function(p, d) diag(c(rchisq(p - d, df=5), rep(0, d))),
+  heavytail = function(p, d) diag(c(abs(rcauchy(p - d, location=5)), rep(0, d))),
+  clinear = clinear
 )
 
 a_names <- c(
   identity   = "Identity",
   chisquared = "Chi-squared",
   heavytail  = "Heavy-tailed",
-  spike      = "Spiked"
+  spike      = "Spiked",
+  clinear    = "Circulant-linear"
 )
 ```
 
@@ -82,7 +127,7 @@ b_types <- list(
       {. + t(.)} %>%
       eigen(symmetric=TRUE) %>%
       .$vectors
-    D <- diag(rchisp(p, df=5))
+    D <- diag(rchisq(p, df=5))
     P %*% D %*% t(P)
   },
   highcorr = function(p) matrix(0.8, nrow=p, ncol=p) + 0.2 * diag(p)
@@ -144,7 +189,7 @@ for (idx in 1:nrow(eig_ref_reml)) {
 ```
 
 ```{r eval = !perform_simulations, include = FALSE}
-load("../data/nearly-null.RData")
+#load("../data/nearly-null.RData")
 ```
 
 ```{r, eval = save_data}
@@ -162,7 +207,7 @@ eig_stat_nn <- eig_ref_reml %>%
     b_type  = factor(b_type, levels = names(b_names))
   )
 
-a_sub <- c("identity", "chisquared")
+a_sub <- c("identity", "chisquared", "clinear")
 b_sub <- c("identity", "highcorr")
 
 eig_stat_nn_sub <- eig_stat_nn %>%
@@ -398,7 +443,7 @@ for (idx in 1:nrow(eig_ref)) {
 ```
 
 ```{r eval = !perform_simulations, include = FALSE}
-load("../data/manova-reml.RData")
+#load("../data/manova-reml.RData")
 ```
 
 ```{r eval = save_data}
